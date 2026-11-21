@@ -11,7 +11,7 @@
 .
 ├── frontend/                 Vue 3 + Vite + TypeScript 前端
 │   ├── src/views/WorkbenchView.vue|tsx  全部模块共享工作台
-│   ├── src/data/modules.ts              18个业务模块配置
+│   ├── src/data/modules.ts              19个业务模块配置
 │   ├── src/api/              统一请求封装
 │   └── vite.config.ts        dev server 配置（open: false）
 ├── backend/                  FastAPI（Python） 后端
@@ -68,6 +68,7 @@ npm run dev
 | 质量基线管理 | `dq_baseline` | 基线定义 | 基线编号、目标表名、基线指标 |
 | 主数据实体注册 | `mdm_entity` | 主数据实体 | 实体编号、实体名称、业务域 |
 | 质量趋势看板 | `dq_trend` | 趋势记录 | 记录编号、目标表名、日期 |
+| 质量趋势修订 | `dq_trend_revision` | 趋势修订包 | 修订包编号、目标表名、发布序号、校验和 |
 
 ## 约定
 

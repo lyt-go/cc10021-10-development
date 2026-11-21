@@ -19,7 +19,7 @@ class DqScorecardService(BaseModuleService):
     MODULE = "dq_scorecard"
     ENTITY = "评分记录"
     OPERATION_TERM = "计算"
-    LIST_FIELDS = ["记录编号", "目标表名", "完整性得分", "准确性得分", "时效性得分", "综合得分", "评分时间", "评分版本"]
+    LIST_FIELDS = ["记录编号", "目标表名", "完整性得分", "准确性得分", "时效性得分", "综合得分", "评分时间", "评分版本", "评分日期", "迟到标记", "发布占用"]
     REQUIRED_FIELDS = ["记录编号", "目标表名", "完整性得分"]
     STATUS_ORDER = ["草稿", "计算中", "已完成", "已归档"]
     ACTION_RULES = {"发起评分": "计算中", "确认完成": "已完成", "归档记录": "已归档"}
@@ -71,7 +71,12 @@ class DqScorecardService(BaseModuleService):
             "时效性得分": str(round(timeliness, 1)),
             "综合得分": str(round(overall, 1)),
             "评分时间": datetime.now(timezone.utc).isoformat(),
+            "评分日期": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             "评分版本": "v1.0",
+            "迟到标记": "首次评分",
+            "发布占用": "",
+            "趋势核对结论": "",
+            "核对清单": [],
             "status": "已完成",
             "pending": False,
             "abnormal": overall < 60,
@@ -113,6 +118,69 @@ class DqScorecardService(BaseModuleService):
             "pending": False,
             "abnormal": overall < 60,
         })
+
+    def register_daily_score(
+        self,
+        table_name: str,
+        score_date: str,
+        completeness: float,
+        accuracy: float,
+        timeliness: float,
+        *,
+        calc_batch: str | None = None,
+    ) -> dict[str, Any]:
+        """登记一张按日评分（迟到评分也走这里）。
+
+        同一天的第二张评分自动打「迟到评分」标记；已存在的首评保留不变。
+        评分先落评分卡，是否进入趋势曲线由趋势修订包的聚合与确认决定，
+        已发布曲线不会被迟到评分改写。
+        """
+        rows = store.rows(self.MODULE)
+        same_day = [
+            r for r in rows
+            if r.get("目标表名") == table_name and str(r.get("评分日期")) == score_date
+        ]
+        is_late = bool(same_day)
+        overall = round(completeness * 0.5 + accuracy * 0.3 + timeliness * 0.2, 1)
+        new_id = max((int(r.get("id", 0)) for r in rows), default=0) + 1
+        entry = {
+            "id": new_id,
+            "记录编号": f"DQ_S-{new_id:04d}",
+            "目标表名": table_name,
+            "完整性得分": f"{completeness:.1f}",
+            "准确性得分": f"{accuracy:.1f}",
+            "时效性得分": f"{timeliness:.1f}",
+            "综合得分": f"{overall:.1f}",
+            "评分时间": datetime.now(timezone.utc).isoformat(),
+            "评分日期": score_date,
+            "评分版本": f"v{len(same_day) + 1}.0",
+            "迟到标记": "迟到评分" if is_late else "首次评分",
+            "计算批次号": calc_batch or f"batch-{new_id}",
+            "发布占用": "",
+            "趋势核对结论": "",
+            "核对清单": [],
+            "status": "已完成",
+            "pending": False,
+            "abnormal": overall < 60,
+        }
+        rows.append(entry)
+        return entry
+
+    def scorecard_checklist(self, score_id: int) -> dict[str, Any]:
+        """查看单张评分的核对清单：被哪次发布使用、各修订包给过什么核对结论。"""
+        score = store.find(self.MODULE, score_id)
+        if score is None:
+            return {"ok": False, "原因": f"评分记录{score_id}不存在"}
+        return {
+            "ok": True,
+            "评分记录": score.get("记录编号"),
+            "目标表名": score.get("目标表名"),
+            "评分日期": score.get("评分日期"),
+            "迟到标记": score.get("迟到标记", "首次评分"),
+            "发布占用": score.get("发布占用", ""),
+            "趋势核对结论": score.get("趋势核对结论", ""),
+            "核对清单": score.get("核对清单", []),
+        }
 
     def domain_snapshot(self) -> dict[str, Any]:
         snapshot = super().domain_snapshot()

@@ -200,6 +200,17 @@ export const MODULES: ModuleMeta[] = [
     actionTargets: {"标记下降": "下降趋势", "标记需关注": "需关注", "标记已改善": "已改善"},
     metrics: ["趋势记录总数", "下降趋势记录", "需关注记录"],
   },
+  {
+    key: "dq_trend_revision",
+    name: "质量趋势修订",
+    entity: "趋势修订包",
+    desc: "聚合评分卡日数据生成可复算趋势曲线，管理修订包的确认发布、撤下与作废，发布序号与曲线快照一一绑定，供质量报告取用。",
+    fields: ["修订包编号", "目标表名", "起始日期", "截止日期", "发布序号", "曲线版本", "来源评分数", "校验和"],
+    statuses: ["待确认", "已发布", "已撤下", "已作废"],
+    actions: ["确认发布", "撤下修订", "作废修订"],
+    actionTargets: {"确认发布": "已发布", "撤下修订": "已撤下", "作废修订": "已作废"},
+    metrics: ["修订包总数", "待确认修订包", "已发布修订包"],
+  },
 ]
 
 export const MODULE_BY_KEY: Map<string, ModuleMeta> = new Map(

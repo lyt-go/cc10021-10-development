@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.services.base import BaseModuleService
+from app.services.dq_trend_revision import DqTrendRevisionService
 from app.store import store
 
 
@@ -122,6 +123,57 @@ class DqReportService(BaseModuleService):
             f"{report.get('报告编号')},{report.get('报告周期')},{report.get('覆盖表数')},{report.get('通过规则数')},{report.get('失败规则数')},{report.get('趋势分析')},{report.get('生成时间')},{report.get('报告版本')}",
         ]
         return "\n".join(lines)
+
+    def publish_daily_curve(self, table_name: str, period: str = "daily") -> dict[str, Any]:
+        """日报发布：只从已发布趋势修订包取当期曲线。
+
+        待确认包不能发给下游；已撤下/已作废包一律排除。
+        一个发布序号只对应一套可复算曲线，因此日报返回的曲线点与
+        修订包发布时固化的快照完全一致，并带校验和供下游复算。
+        """
+        revision_svc = DqTrendRevisionService()
+        curve = revision_svc.published_curve(table_name)
+        if curve is None:
+            return {
+                "目标表名": table_name,
+                "报告周期": period,
+                "可发布": False,
+                "原因": "没有已发布的趋势修订包，待确认曲线不能下发日报",
+                "当期曲线": [],
+            }
+
+        rows = store.rows(self.MODULE)
+        new_id = max((int(r.get("id", 0)) for r in rows), default=0) + 1
+        report = {
+            "id": new_id,
+            "报告编号": f"DQ_R-{new_id:04d}",
+            "报告周期": period,
+            "覆盖表数": "1",
+            "通过规则数": "0",
+            "失败规则数": "0",
+            "趋势分析": f"取用发布序号#{curve['发布序号']}曲线",
+            "生成时间": datetime.now(timezone.utc).isoformat(),
+            "报告版本": curve["曲线版本"],
+            "取用发布序号": curve["发布序号"],
+            "曲线校验和": curve["校验和"],
+            "status": "已完成",
+            "pending": False,
+            "abnormal": False,
+        }
+        rows.append(report)
+
+        return {
+            "目标表名": table_name,
+            "报告周期": period,
+            "可发布": True,
+            "报告编号": report["报告编号"],
+            "修订包": curve["修订包"],
+            "发布序号": curve["发布序号"],
+            "曲线版本": curve["曲线版本"],
+            "曲线校验和": curve["校验和"],
+            "当期曲线": curve["曲线点"],
+            "生成时间": report["生成时间"],
+        }
 
     def domain_snapshot(self) -> dict[str, Any]:
         snapshot = super().domain_snapshot()
